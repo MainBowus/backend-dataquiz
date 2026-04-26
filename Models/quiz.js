@@ -50,6 +50,5 @@ const quizSchema = new mongoose.Schema({
         default: 0
     }
 }, { timestamps: true })
-// timestamps: true = สร้าง createdAt + updatedAt อัตโนมัติ (แทน createAt ที่ต้องทำเอง)
 
 module.exports = mongoose.model('Quiz', quizSchema)
