@@ -1,140 +1,129 @@
-const Quiz = require('../Models/quiz')
+const Quiz           = require('../Models/quiz')
+const { cloudinary } = require('../Config/cloudinary')
 
-// =====================
-// ดึง quiz ทั้งหมดที่เป็น public
-// =====================
 exports.listPublicQuizzes = async (req, res) => {
     try {
         const quizzes = await Quiz.find({ isPublic: true })
             .populate('creatorId', 'username')
-            // populate = ดึงข้อมูล user ที่สร้าง quiz มาด้วย (เอาแค่ username)
-            .select('-questions.options.isCorrect')
-            // ไม่ส่งเฉลยไปให้ (ซ่อน isCorrect)
+            .select('-questions.options.isCorrect -questions.acceptedAnswers')
             .sort({ createdAt: -1 })
-            // เรียงจากใหม่ไปเก่า
-
         res.json(quizzes)
     } catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Server Error' })
+        console.error(err.stack)
+        res.status(500).json({ message: err.message })
     }
 }
 
-// =====================
-// ดึง quiz ตาม ID
-// =====================
 exports.getQuizById = async (req, res) => {
     try {
-        const quiz = await Quiz.findById(req.params.id)
-            .populate('creatorId', 'username')
-
-        if (!quiz) {
-            return res.status(404).json({ message: 'Quiz not found' })
-        }
-
+        const quiz = await Quiz.findById(req.params.id).populate('creatorId', 'username')
+        if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
         res.json(quiz)
     } catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Server Error' })
+        console.error(err.stack)
+        res.status(500).json({ message: err.message })
     }
 }
 
-// =====================
-// ดึง quiz ของตัวเอง (ต้อง login)
-// =====================
 exports.getMyQuizzes = async (req, res) => {
     try {
-        const quizzes = await Quiz.find({ creatorId: req.user.id })
-            .sort({ createdAt: -1 })
-
+        const quizzes = await Quiz.find({ creatorId: req.user.id }).sort({ createdAt: -1 })
         res.json(quizzes)
     } catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Server Error' })
+        console.error(err.stack)
+        res.status(500).json({ message: err.message })
     }
 }
 
-// =====================
-// สร้าง quiz ใหม่ (ต้อง login)
-// =====================
 exports.createQuiz = async (req, res) => {
     try {
-        const { title, description, questions, isPublic } = req.body
+        console.log('=== CREATE QUIZ ===')
+        console.log('body:', req.body)
+        console.log('file:', req.file)
 
-        if (!title) {
-            return res.status(400).json({ message: 'Title is required' })
+        const { title, description, isPublic, category, questions: questionsRaw } = req.body
+
+        if (!title) return res.status(400).json({ message: 'กรุณากรอกชื่อ Quiz' })
+        if (!questionsRaw) return res.status(400).json({ message: 'Quiz ต้องมีอย่างน้อย 1 คำถาม' })
+
+        let questions
+        try {
+            questions = JSON.parse(questionsRaw)
+        } catch (parseErr) {
+            console.error('JSON parse error:', parseErr.message)
+            return res.status(400).json({ message: 'questions ต้องเป็น JSON string ที่ถูกต้อง' })
         }
 
-        if (!questions || questions.length === 0) {
-            return res.status(400).json({ message: 'At least one question is required' })
+        if (!Array.isArray(questions) || questions.length === 0) {
+            return res.status(400).json({ message: 'Quiz ต้องมีอย่างน้อย 1 คำถาม' })
         }
+
+        const coverImage = req.file
+            ? { url: req.file.path, publicId: req.file.filename }
+            : { url: null, publicId: null }
+
+        console.log('coverImage:', coverImage)
 
         const newQuiz = new Quiz({
             title,
             description: description || '',
+            coverImage,
             questions,
-            isPublic: isPublic || false,
+            isPublic:  isPublic === 'true',
+            category:  category || 'General',
             creatorId: req.user.id
         })
 
         const savedQuiz = await newQuiz.save()
+        console.log('Quiz saved:', savedQuiz._id)
         res.status(201).json(savedQuiz)
+
     } catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Server Error' })
+        console.error('=== CREATE QUIZ ERROR ===')
+        console.error('name:', err.name)
+        console.error('message:', err.message)
+        console.error('stack:', err.stack)
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ message: err.message })
+        }
+        res.status(500).json({ message: err.message })
     }
 }
 
-// =====================
-// แก้ไข quiz (ต้อง login + เป็นเจ้าของ)
-// =====================
 exports.updateQuiz = async (req, res) => {
     try {
-        // หา quiz ก่อน เพื่อตรวจว่าเป็นเจ้าของจริงไหม
         const quiz = await Quiz.findById(req.params.id)
+        if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
+        if (quiz.creatorId.toString() !== req.user.id) return res.status(403).json({ message: 'ไม่มีสิทธิ์แก้ไข Quiz นี้' })
 
-        if (!quiz) {
-            return res.status(404).json({ message: 'Quiz not found' })
+        if (req.body.coverImage && quiz.coverImage?.publicId) {
+            await cloudinary.uploader.destroy(quiz.coverImage.publicId)
         }
 
-        // ตรวจว่า user เป็นเจ้าของ quiz นี้ไหม
-        if (quiz.creatorId.toString() !== req.user.id) {
-            return res.status(403).json({ message: 'Not authorized to edit this quiz' })
-        }
-
-        const updatedQuiz = await Quiz.findByIdAndUpdate(
-            req.params.id,
-            { $set: req.body },
-            { new: true }
-        )
-
+        const updatedQuiz = await Quiz.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true })
         res.json(updatedQuiz)
     } catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Server Error' })
+        console.error(err.stack)
+        res.status(500).json({ message: err.message })
     }
 }
 
-// =====================
-// ลบ quiz (ต้อง login + เป็นเจ้าของ)
-// =====================
 exports.deleteQuiz = async (req, res) => {
     try {
         const quiz = await Quiz.findById(req.params.id)
+        if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
+        if (quiz.creatorId.toString() !== req.user.id) return res.status(403).json({ message: 'ไม่มีสิทธิ์ลบ Quiz นี้' })
 
-        if (!quiz) {
-            return res.status(404).json({ message: 'Quiz not found' })
-        }
+        if (quiz.coverImage?.publicId) await cloudinary.uploader.destroy(quiz.coverImage.publicId)
 
-        // ตรวจว่า user เป็นเจ้าของ quiz นี้ไหม
-        if (quiz.creatorId.toString() !== req.user.id) {
-            return res.status(403).json({ message: 'Not authorized to delete this quiz' })
+        for (const q of quiz.questions) {
+            if (q.questionImage?.publicId) await cloudinary.uploader.destroy(q.questionImage.publicId)
         }
 
         await Quiz.findByIdAndDelete(req.params.id)
-        res.json({ message: 'Quiz deleted successfully' })
+        res.json({ message: 'ลบ Quiz สำเร็จ' })
     } catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Server Error' })
+        console.error(err.stack)
+        res.status(500).json({ message: err.message })
     }
 }
