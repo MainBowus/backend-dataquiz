@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <h2>Kahood</h2>
+    <form id="form">
+        <input type="text" id="name" />
+        <input type="text" id="message" value="yellow" />
+        <button type="submit">Send</button>
+    </form>
+
+    <form id="form2">
+        <input type="text" id="name2"/>
+        <input type="text" id="message2" value="red" />
+        <button type="submit" value="Red">Send</button>
+    </form>
+
+    <form id="form3">
+        <input type="text" id="name3"/>
+        <input type="text" id="message3" value="green" />
+        <button type="submit" value="Red">Send</button>
+    </form>
+
+    <form id="form4">
+        <input type="text" id="name4"/>
+        <input type="text" id="message4" value="blue" />
+        <button type="submit" value="Red">Send</button>
+    </form>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io()
+
+        const form = document.getElementById('form')
+        const form2 = document.getElementById('form2')
+        const form3 = document.getElementById('form3')
+        const form4 = document.getElementById('form4')
+        const name = document.getElementById('name')
+        const name2 = document.getElementById('name2')
+        const name3 = document.getElementById('name3')
+        const name4 = document.getElementById('name4')
+        const message = document.getElementById('message')
+        const message2 = document.getElementById('message2')
+        const message3 = document.getElementById('message3')
+        const message4 = document.getElementById('message4')
+
+        name.value = getName()
+        name2.value = getName()
+        name3.value = getName()
+        name4.value = getName()
+
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault()
+
+            if (message.value) {
+                socket.emit('chat:message', {
+                    name: name.value,
+                    message: message.value,
+                    time: new Date().toLocaleDateString()
+                })
+            }
+        })
+
+        form2.addEventListener('submit', (e) => {
+            e.preventDefault()
+
+            socket.emit('chat:message', {
+                name: name2.value,
+                message: message2.value,
+                time: new Date().toLocaleDateString()
+            })
+        })
+
+        form3.addEventListener('submit', (e) => {
+            e.preventDefault()
+
+            socket.emit('chat:message', {
+                name: name3.value,
+                message: message3.value,
+                time: new Date().toLocaleDateString()
+            })
+        })
+
+        form4.addEventListener('submit', (e) => {
+            e.preventDefault()
+
+            socket.emit('chat:message', {
+                name: name4.value,
+                message: message4.value,
+                time: new Date().toLocaleDateString()
+            })
+        })
+
+        function getName() {
+            const date = new Date()
+            return 'User-' + date.getTime()
+        }
+    </script>
+</body>
+
+</html>
