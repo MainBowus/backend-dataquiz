@@ -22,7 +22,7 @@ router.get('/my-quizzes',     auth, getMyQuizzes)
 // ถ้าไม่มีรูป ก็ไม่ต้องส่ง field cover มา multer จะข้ามไปเอง
 router.post('/quizzes',       auth, uploadCover.single('cover'), createQuiz)
 
-router.put('/quizzes/:id',    auth, updateQuiz)
+router.put('/quizzes/:id',    auth, uploadCover.single('cover'), updateQuiz)
 router.delete('/quizzes/:id', auth, deleteQuiz)
 
 module.exports = router
