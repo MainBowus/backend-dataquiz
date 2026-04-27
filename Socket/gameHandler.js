@@ -15,14 +15,11 @@ function calculateScore(basePoints, timeLimit, timeLeft) {
     return Math.round(basePoints * (timeLeft / timeLimit))
 }
 
-// เช็คว่าเป็น host ของ game นี้ไหม (รองรับ reconnect)
 function isHost(game, socketId, pin) {
     if (!game) return false
-    // ถ้า socket id ตรง → เป็น host
     if (game.hostSocketId === socketId) return true
-    // ถ้า socket id ไม่ตรง แต่ pin ตรง และ game ยัง playing → อนุญาต host reconnect
     if (game.hostPin === pin) {
-        game.hostSocketId = socketId  // อัปเดต socket id ใหม่
+        game.hostSocketId = socketId
         return true
     }
     return false
@@ -32,7 +29,6 @@ function setupGameHandler(io) {
     io.on('connection', (socket) => {
         console.log('Socket connected:', socket.id)
 
-        // HOST: สร้างเกมใหม่
         socket.on('game:create', async (data) => {
             try {
                 const { quizId } = data
@@ -45,7 +41,7 @@ function setupGameHandler(io) {
                 const pin = generatePin()
                 games[pin] = {
                     hostSocketId: socket.id,
-                    hostPin: pin,  // เก็บ pin ไว้ให้ host reconnect ได้
+                    hostPin: pin,
                     quizId,
                     quiz: { title: quiz.title, questions: quiz.questions },
                     players: {},
@@ -68,7 +64,6 @@ function setupGameHandler(io) {
             }
         })
 
-        // HOST: reconnect เข้า game ที่มีอยู่แล้ว
         socket.on('game:reconnect-host', (data) => {
             const { pin } = data
             const game = games[pin]
@@ -88,7 +83,6 @@ function setupGameHandler(io) {
             console.log('Host reconnected to game ' + pin)
         })
 
-        // PLAYER: เข้าร่วมเกม
         socket.on('game:join', (data) => {
             const { pin, name } = data
             const game = games[pin]
@@ -96,23 +90,37 @@ function setupGameHandler(io) {
                 socket.emit('game:error', { message: 'Game not found. Check your PIN.' })
                 return
             }
+
             if (game.status !== 'lobby') {
-    // player rejoin ระหว่างเกม
-    const existingPlayer = Object.values(game.players).find(p => p.name === name)
-    if (existingPlayer) {
-        // reconnect player เดิม
-        game.players[socket.id] = existingPlayer
-        socket.join(pin)
-        socket.emit('game:joined', {
-            name, pin,
-            quizTitle: game.quiz.title,
-            totalQuestions: game.quiz.questions.length
-        })
-        return
-    }
-    socket.emit('game:error', { message: 'Game already started' })
-    return
-}
+                // player rejoin ระหว่างเกม
+                const existingPlayer = Object.values(game.players).find(p => p.name === name)
+                if (existingPlayer) {
+                    game.players[socket.id] = existingPlayer
+                    socket.join(pin)
+                    socket.emit('game:joined', {
+                        name, pin,
+                        quizTitle: game.quiz.title,
+                        totalQuestions: game.quiz.questions.length
+                    })
+                    // ส่งคำถามปัจจุบันให้ player ที่ reconnect
+                    if (game.status === 'playing' && game.currentQuestion >= 0) {
+                        const question = game.quiz.questions[game.currentQuestion]
+                        socket.emit('game:question', {
+                            questionIndex: game.currentQuestion,
+                            totalQuestions: game.quiz.questions.length,
+                            questionText: question.questionText,
+                            questionType: question.questionType,
+                            options: question.options.map(opt => ({ text: opt.text })),
+                            timeLimit: question.timeLimit,
+                            points: question.points
+                        })
+                    }
+                    return
+                }
+                socket.emit('game:error', { message: 'Game already started' })
+                return
+            }
+
             const nameTaken = Object.values(game.players).some(p => p.name === name)
             if (nameTaken) {
                 socket.emit('game:error', { message: 'Name already taken' })
@@ -137,7 +145,6 @@ function setupGameHandler(io) {
             console.log('Player "' + name + '" joined game ' + pin)
         })
 
-        // HOST: เริ่มเกม
         socket.on('game:start', (data) => {
             const { pin } = data
             const game = games[pin]
@@ -157,7 +164,6 @@ function setupGameHandler(io) {
             console.log('Game ' + pin + ' started with ' + Object.keys(game.players).length + ' players')
         })
 
-        // HOST: ส่งคำถามถัดไป
         socket.on('game:next-question', (data) => {
             const { pin } = data
             const game = games[pin]
@@ -181,7 +187,6 @@ function setupGameHandler(io) {
             const question = questions[qIndex]
             game.questionStartTime = Date.now()
 
-            // ส่งให้ host
             socket.emit('game:question', {
                 questionIndex: qIndex,
                 totalQuestions: questions.length,
@@ -192,7 +197,6 @@ function setupGameHandler(io) {
                 points: question.points
             })
 
-            // ส่งให้ players (ไม่มีเฉลย)
             Object.keys(game.players).forEach(sid => {
                 io.to(sid).emit('game:question', {
                     questionIndex: qIndex,
@@ -212,7 +216,6 @@ function setupGameHandler(io) {
             console.log('Game ' + pin + ': Question ' + (qIndex + 1) + '/' + questions.length)
         })
 
-        // PLAYER: ส่งคำตอบ
         socket.on('game:answer', (data) => {
             const { pin, answerIndex } = data
             const game = games[pin]
@@ -265,7 +268,6 @@ function setupGameHandler(io) {
             console.log('Game ' + pin + ': ' + player.name + ' answered Q' + (qIndex + 1) + ' - ' + (isCorrect ? 'CORRECT' : 'WRONG'))
         })
 
-        // HOST: ขอดู reveal
         socket.on('game:get-reveal', (data) => {
             const { pin } = data
             const game = games[pin]
@@ -297,7 +299,6 @@ function setupGameHandler(io) {
             })
         })
 
-        // HOST: ขอดู scoreboard
         socket.on('game:get-scoreboard', (data) => {
             const { pin } = data
             const game = games[pin]
@@ -323,7 +324,6 @@ function setupGameHandler(io) {
             })
         })
 
-        // HOST: จบเกมก่อนเวลา
         socket.on('game:force-end', (data) => {
             const { pin } = data
             const game = games[pin]
@@ -331,13 +331,11 @@ function setupGameHandler(io) {
             endGame(io, pin)
         })
 
-        // disconnect
         socket.on('disconnect', () => {
             console.log('Socket disconnected:', socket.id)
             for (const pin in games) {
                 const game = games[pin]
                 if (game.hostSocketId === socket.id) {
-                    // Host หลุด → รอ reconnect 30 วิ ก่อนจบเกม
                     game._hostDisconnectTimer = setTimeout(() => {
                         io.to(pin).emit('game:host-disconnected', { message: 'Host has disconnected. Game ended.' })
                         if (game.timer) clearTimeout(game.timer)
