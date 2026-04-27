@@ -18,11 +18,18 @@ router.get('/quizzes/:id', getQuizById)
 // ── ต้อง Login ──────────────────────────────────────────────
 router.get('/my-quizzes',     auth, getMyQuizzes)
 
-// createQuiz รับ form-data → uploadCover.single('cover') คั่นกลาง
-// ถ้าไม่มีรูป ก็ไม่ต้องส่ง field cover มา multer จะข้ามไปเอง
-router.post('/quizzes',       auth, uploadCover.single('cover'), createQuiz)
+const uploadSafe = (req, res, next) => {
+    uploadCover.single('cover')(req, res, (err) => {
+        if (err) {
+            console.error('Upload error (skipping):', err.message)
+            req.file = null
+        }
+        next()
+    })
+}
 
-router.put('/quizzes/:id',    auth, uploadCover.single('cover'), updateQuiz)
+router.post('/quizzes',       auth, uploadSafe, createQuiz)
+router.put('/quizzes/:id',    auth, uploadSafe, updateQuiz)
 router.delete('/quizzes/:id', auth, deleteQuiz)
 
 module.exports = router
