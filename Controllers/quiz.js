@@ -47,11 +47,15 @@ exports.createQuiz = async (req, res) => {
         if (!questionsRaw) return res.status(400).json({ message: 'Quiz ต้องมีอย่างน้อย 1 คำถาม' })
 
         let questions
-        try {
-            questions = JSON.parse(questionsRaw)
-        } catch (parseErr) {
-            console.error('JSON parse error:', parseErr.message)
-            return res.status(400).json({ message: 'questions ต้องเป็น JSON string ที่ถูกต้อง' })
+        if (Array.isArray(questionsRaw)) {
+            questions = questionsRaw
+        } else {
+            try {
+                questions = JSON.parse(questionsRaw)
+            } catch (parseErr) {
+                console.error('JSON parse error:', parseErr.message)
+                return res.status(400).json({ message: 'questions ต้องเป็น JSON string ที่ถูกต้อง' })
+            }
         }
 
         if (!Array.isArray(questions) || questions.length === 0) {

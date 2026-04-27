@@ -28,7 +28,7 @@ const uploadSafe = (req, res, next) => {
     })
 }
 
-router.post('/quizzes',       auth, uploadSafe, createQuiz)
+router.post('/quizzes',       auth, createQuiz)
 router.put('/quizzes/:id',    auth, uploadSafe, updateQuiz)
 router.delete('/quizzes/:id', auth, deleteQuiz)
 
