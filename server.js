@@ -10,9 +10,13 @@ const app    = express()
 const server = http.createServer(app)
 const io     = new Server(server, { cors: { origin: '*' } })
 
-app.use(cors({
-  origin: ['https://dataquiz-nu.vercel.app', 'http://127.0.0.1:5500', 'http://localhost:5500' , 'https://testdata-eta.vercel.app']
-}))
+const corsOptions = {
+    origin: ['https://dataquiz-nu.vercel.app', 'http://127.0.0.1:5500', 'http://localhost:5500', 'https://testdata-eta.vercel.app'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 app.use(express.json())
 
 app.use('/api', require('./Routes/auth'))
