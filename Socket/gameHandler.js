@@ -97,9 +97,22 @@ function setupGameHandler(io) {
                 return
             }
             if (game.status !== 'lobby') {
-                socket.emit('game:error', { message: 'Game already started' })
-                return
-            }
+    // player rejoin ระหว่างเกม
+    const existingPlayer = Object.values(game.players).find(p => p.name === name)
+    if (existingPlayer) {
+        // reconnect player เดิม
+        game.players[socket.id] = existingPlayer
+        socket.join(pin)
+        socket.emit('game:joined', {
+            name, pin,
+            quizTitle: game.quiz.title,
+            totalQuestions: game.quiz.questions.length
+        })
+        return
+    }
+    socket.emit('game:error', { message: 'Game already started' })
+    return
+}
             const nameTaken = Object.values(game.players).some(p => p.name === name)
             if (nameTaken) {
                 socket.emit('game:error', { message: 'Name already taken' })
