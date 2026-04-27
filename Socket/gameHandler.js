@@ -45,6 +45,7 @@ function setupGameHandler(io) {
                     quizId,
                     quiz: { title: quiz.title, questions: quiz.questions },
                     players: {},
+                    disconnectedPlayers: {},
                     currentQuestion: -1,
                     status: 'lobby',
                     timer: null,
@@ -96,17 +97,20 @@ function setupGameHandler(io) {
             }
 
             if (game.status !== 'lobby') {
-                // player rejoin ระหว่างเกม
-                const existingPlayer = Object.values(game.players).find(p => p.name === name)
+                // player rejoin ระหว่างเกม — เช็คทั้ง active และ disconnected
+                const existingPlayer =
+                    Object.values(game.players).find(p => p.name === name) ||
+                    game.disconnectedPlayers[name]
+
                 if (existingPlayer) {
                     game.players[socket.id] = existingPlayer
+                    delete game.disconnectedPlayers[name]
                     socket.join(pin)
                     socket.emit('game:joined', {
                         name, pin,
                         quizTitle: game.quiz.title,
                         totalQuestions: game.quiz.questions.length
                     })
-                    // ส่งคำถามปัจจุบันให้ player ที่ reconnect
                     if (game.status === 'playing' && game.currentQuestion >= 0) {
                         const question = game.quiz.questions[game.currentQuestion]
                         socket.emit('game:question', {
@@ -375,8 +379,12 @@ function setupGameHandler(io) {
                     break
                 }
                 if (game.players[socket.id]) {
-                    const playerName = game.players[socket.id].name
+                    const playerData = game.players[socket.id]
+                    const playerName = playerData.name
                     delete game.players[socket.id]
+                    if (game.status === 'playing') {
+                        game.disconnectedPlayers[playerName] = playerData
+                    }
                     io.to(game.hostSocketId).emit('game:player-left', {
                         name: playerName,
                         playerCount: Object.keys(game.players).length,
