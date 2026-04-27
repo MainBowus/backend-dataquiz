@@ -11,7 +11,7 @@ const server = http.createServer(app)
 const io     = new Server(server, { cors: { origin: '*' } })
 
 app.use(cors({
-  origin: '*'
+  origin: ['https://dataquiz-bs1u.vercel.app', 'http://127.0.0.1:5500', 'http://localhost:5500']
 }))
 app.use(express.json())
 
