@@ -96,11 +96,27 @@ exports.updateQuiz = async (req, res) => {
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
         if (quiz.creatorId.toString() !== req.user.id) return res.status(403).json({ message: 'ไม่มีสิทธิ์แก้ไข Quiz นี้' })
 
-        if (req.body.coverImage && quiz.coverImage?.publicId) {
-            await cloudinary.uploader.destroy(quiz.coverImage.publicId)
+        const updates = {}
+        if (req.body.title)                      updates.title       = req.body.title
+        if (req.body.description !== undefined)  updates.description = req.body.description
+        if (req.body.isPublic    !== undefined)  updates.isPublic    = req.body.isPublic === 'true' || req.body.isPublic === true
+        if (req.body.category)                   updates.category    = req.body.category
+        if (req.body.questions) {
+            try {
+                updates.questions = typeof req.body.questions === 'string'
+                    ? JSON.parse(req.body.questions)
+                    : req.body.questions
+            } catch {
+                return res.status(400).json({ message: 'questions ต้องเป็น JSON ที่ถูกต้อง' })
+            }
         }
 
-        const updatedQuiz = await Quiz.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true })
+        if (req.file) {
+            if (quiz.coverImage?.publicId) await cloudinary.uploader.destroy(quiz.coverImage.publicId)
+            updates.coverImage = { url: req.file.path, publicId: req.file.filename }
+        }
+
+        const updatedQuiz = await Quiz.findByIdAndUpdate(req.params.id, { $set: updates }, { new: true, runValidators: true })
         res.json(updatedQuiz)
     } catch (err) {
         console.error(err.stack)
