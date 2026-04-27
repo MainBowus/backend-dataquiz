@@ -97,37 +97,41 @@ function setupGameHandler(io) {
             }
 
             if (game.status !== 'lobby') {
-                // player rejoin ระหว่างเกม — เช็คทั้ง active และ disconnected
-                const existingPlayer =
+                // player rejoin ระหว่างเกม — คืน data เดิมถ้าเจอ หรือสร้างใหม่ถ้าไม่เจอ
+                const existing =
                     Object.values(game.players).find(p => p.name === name) ||
-                    game.disconnectedPlayers[name]
+                    (game.disconnectedPlayers && game.disconnectedPlayers[name])
 
-                if (existingPlayer) {
-                    game.players[socket.id] = existingPlayer
+                game.players[socket.id] = existing
+                    ? existing
+                    : { name, score: 0, answers: [], streak: 0 }
+
+                if (game.disconnectedPlayers && game.disconnectedPlayers[name]) {
                     delete game.disconnectedPlayers[name]
-                    socket.join(pin)
-                    socket.emit('game:joined', {
-                        name, pin,
-                        quizTitle: game.quiz.title,
-                        totalQuestions: game.quiz.questions.length
-                    })
-                    if (game.status === 'playing' && game.currentQuestion >= 0) {
-                        const question = game.quiz.questions[game.currentQuestion]
-                        socket.emit('game:question', {
-                            questionIndex: game.currentQuestion,
-                            totalQuestions: game.quiz.questions.length,
-                            questionText: question.questionText,
-                            questionType: question.questionType,
-                            options: question.questionType === 'multiple-choice'
-                                ? question.options.map(opt => ({ text: opt.text }))
-                                : [],
-                            timeLimit: question.timeLimit,
-                            points: question.points
-                        })
-                    }
-                    return
                 }
-                socket.emit('game:error', { message: 'Game already started' })
+
+                socket.join(pin)
+                socket.pin = pin
+                socket.emit('game:joined', {
+                    name, pin,
+                    quizTitle: game.quiz.title,
+                    totalQuestions: game.quiz.questions.length
+                })
+
+                if (game.status === 'playing' && game.currentQuestion >= 0) {
+                    const question = game.quiz.questions[game.currentQuestion]
+                    socket.emit('game:question', {
+                        questionIndex: game.currentQuestion,
+                        totalQuestions: game.quiz.questions.length,
+                        questionText: question.questionText,
+                        questionType: question.questionType,
+                        options: question.questionType === 'multiple-choice'
+                            ? question.options.map(opt => ({ text: opt.text }))
+                            : [],
+                        timeLimit: question.timeLimit,
+                        points: question.points
+                    })
+                }
                 return
             }
 
