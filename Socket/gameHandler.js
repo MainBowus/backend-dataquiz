@@ -71,6 +71,10 @@ function setupGameHandler(io) {
                 socket.emit('game:error', { message: 'Game not found' })
                 return
             }
+            if (game._hostDisconnectTimer) {
+                clearTimeout(game._hostDisconnectTimer)
+                delete game._hostDisconnectTimer
+            }
             game.hostSocketId = socket.id
             socket.join(pin)
             socket.emit('game:reconnected', {
@@ -110,7 +114,9 @@ function setupGameHandler(io) {
                             totalQuestions: game.quiz.questions.length,
                             questionText: question.questionText,
                             questionType: question.questionType,
-                            options: question.options.map(opt => ({ text: opt.text })),
+                            options: question.questionType === 'multiple-choice'
+                                ? question.options.map(opt => ({ text: opt.text }))
+                                : [],
                             timeLimit: question.timeLimit,
                             points: question.points
                         })
@@ -217,7 +223,7 @@ function setupGameHandler(io) {
         })
 
         socket.on('game:answer', (data) => {
-            const { pin, answerIndex } = data
+            const { pin, answerIndex, answerText } = data
             const game = games[pin]
 
             if (!game || game.status !== 'playing') return
@@ -232,7 +238,16 @@ function setupGameHandler(io) {
 
             const timeElapsed = (Date.now() - game.questionStartTime) / 1000
             const timeLeft = Math.max(0, question.timeLimit - timeElapsed)
-            const isCorrect = question.options[answerIndex]?.isCorrect === true
+
+            let isCorrect = false
+            let correctAnswerIndex = -1
+            if (question.questionType === 'open-ended') {
+                const accepted = (question.acceptedAnswers || []).map(a => a.toLowerCase().trim())
+                isCorrect = accepted.includes((answerText || '').toLowerCase().trim())
+            } else {
+                isCorrect = question.options[answerIndex]?.isCorrect === true
+                correctAnswerIndex = isCorrect ? answerIndex : question.options.findIndex(o => o.isCorrect)
+            }
 
             let earnedPoints = 0
             if (isCorrect) {
@@ -252,7 +267,7 @@ function setupGameHandler(io) {
                 isCorrect, earnedPoints,
                 totalScore: player.score,
                 streak: player.streak,
-                correctAnswerIndex: isCorrect ? answerIndex : question.options.findIndex(o => o.isCorrect)
+                correctAnswerIndex
             })
 
             const answeredCount = Object.values(game.players).filter(p => p.answers[qIndex] !== undefined).length
@@ -275,6 +290,21 @@ function setupGameHandler(io) {
 
             const qIndex = game.currentQuestion
             const question = game.quiz.questions[qIndex]
+
+            if (question.questionType === 'open-ended') {
+                const correctCount = Object.values(game.players).filter(p => p.answers[qIndex]?.isCorrect).length
+                const totalAnswered = Object.values(game.players).filter(p => p.answers[qIndex] !== undefined).length
+                socket.emit('game:reveal', {
+                    questionIndex: qIndex,
+                    questionText: question.questionText,
+                    questionType: 'open-ended',
+                    acceptedAnswers: question.acceptedAnswers || [],
+                    correctCount,
+                    totalAnswered
+                })
+                return
+            }
+
             const answerCounts = question.options.map(() => 0)
 
             Object.values(game.players).forEach(player => {
@@ -364,10 +394,11 @@ function timeUp(io, pin) {
     const game = games[pin]
     if (!game) return
     const question = game.quiz.questions[game.currentQuestion]
-    io.to(pin).emit('game:time-up', {
-        questionIndex: game.currentQuestion,
-        correctAnswerIndex: question.options.findIndex(o => o.isCorrect)
-    })
+    const payload = { questionIndex: game.currentQuestion }
+    if (question.questionType !== 'open-ended') {
+        payload.correctAnswerIndex = question.options.findIndex(o => o.isCorrect)
+    }
+    io.to(pin).emit('game:time-up', payload)
 }
 
 function endGame(io, pin) {
